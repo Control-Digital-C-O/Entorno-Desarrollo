@@ -14,7 +14,6 @@ fi
 PROJECT_DIR=$(basename -s .git $REPO_URL)
 
 # Mostrar el nombre del repositorio y pedir confirmación
-echo " "
 echo "El nombre del repositorio es: $PROJECT_DIR"
 read -p "¿Es este el repositorio correcto? (s/n): " confirmacion
 echo " "
@@ -71,7 +70,7 @@ fi
 echo "Clonando el repositorio desde $REPO_URL..."
 git clone $REPO_URL $PROJECT_DIR
 cd $PROJECT_DIR || { echo "Error: no se pudo acceder a la carpeta del proyecto"; exit 1; }
-
+echo " "
 # 5. Crear y activar el entorno virtual
 
 # Verificar si ensurepip está disponible (para crear el entorno con pip)
@@ -120,7 +119,7 @@ else
     python3 -m venv venv || python -m venv venv
     echo "Entorno virtual creado en la carpeta 'venv'."
 fi
-
+echo " "
 # Activar el entorno virtual según el sistema operativo
 if [[ "$OSTYPE" == "linux-gnu"* || "$OSTYPE" == "darwin"* ]]; then
     source venv/bin/activate  # Para Linux/MacOS
@@ -135,18 +134,18 @@ fi
 # 6. Instalar las dependencias de Python
 echo "Instalando las dependencias de Python..."
 pip install -r requirements.txt
-
+echo " "
 # 7. Instalar dependencias de Node.js
 echo "Instalando dependencias de Node.js con npm..."
 npm install
-
+echo " "
 # 8. Instalar concurrently para ejecutar múltiples servidores
 echo "Instalando concurrently..."
 npm install concurrently --save-dev
-
+echo " "
 # Desactivar el entorno virtual
 deactivate
-
+echo " "
 echo "El entorno de desarrollo está listo."
 echo "Todo finalizó correctamente."
 
