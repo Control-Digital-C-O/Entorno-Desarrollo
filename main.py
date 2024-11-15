@@ -37,8 +37,19 @@ def seleccionar_carpeta_clonacion(default_dir):
 
     if custom_dir == 's':
         user_dir = input("Ingrese la ruta de la carpeta deseada: ").strip()
-        os.makedirs(user_dir, exist_ok=True)
-        return user_dir
+
+        # Intentar crear la carpeta personalizada y manejar errores
+        try:
+            os.makedirs(user_dir, exist_ok=True)
+            print(f"Carpeta de clonación configurada en: {user_dir}")
+            return user_dir
+        except PermissionError:
+            print("Error: No tienes permisos para crear la carpeta en esa ubicación.")
+            return None
+        except OSError as e:
+            print(
+                f"Error: No se pudo crear la carpeta de clonación. Detalles: {e}")
+            return None
     return default_dir
 
 
@@ -134,6 +145,11 @@ def install_dependency(dependency_name, install_command, manual_instructions):
 def install_required_dependencies(dependencies):
     """Verifica e instala automáticamente las dependencias detectadas en el sistema."""
 
+    # Verificar si git está instalado
+    if not shutil.which("git"):
+        print("Error: Git no está instalado. Por favor, instala Git y vuelve a intentarlo.")
+        return
+
     # Verificar Node.js y npm
     if 'Node.js' in dependencies:
         if not shutil.which("node") or not shutil.which("npm"):
@@ -145,9 +161,9 @@ def install_required_dependencies(dependencies):
         else:
             print("Node.js y npm ya están instalados.")
 
-    # Verificar Python y pip
+    # Verificar Python
     if 'Python' in dependencies:
-        if not shutil.which("python") and not shutil.which("python3"):
+        if not shutil.which("python3"):
             install_dependency(
                 "Python",
                 ["apt-get", "install", "python3"],
@@ -160,7 +176,7 @@ def install_required_dependencies(dependencies):
                 "Instala pip con el comando 'python3 -m ensurepip --upgrade' o descarga desde https://pip.pypa.io."
             )
 
-    # Instalar dependencias de Node.js o Python específicas del proyecto
+    # Instalar dependencias específicas de Node.js o Python en el proyecto
     project_requirements = {
         "Node.js": ("npm install", "Ejecuta 'npm install' en el directorio del proyecto."),
         "Python": ("pip install -r requirements.txt", "Ejecuta 'pip install -r requirements.txt' en el entorno virtual.")
@@ -206,25 +222,83 @@ def setup_environment_variables():
         print("No se encontró un archivo .env. Puedes crear uno para definir variables de entorno.")
 
 
+def install_python_dependencies():
+    """Instala las dependencias de Python si requirements.txt está presente."""
+    if os.path.exists("requirements.txt"):
+        print("Se detectó requirements.txt. Instalando dependencias de Python...")
+        subprocess.run(["venv/bin/pip", "install", "-r",
+                       "requirements.txt"], check=True)
+        print("Dependencias de Python instaladas correctamente.")
+    else:
+        print("No se detectó requirements.txt. Saltando instalación de dependencias de Python.")
+
+
+def install_node_dependencies():
+    """Instala las dependencias de Node.js si package.json está presente."""
+    if os.path.exists("package.json"):
+        print("Se detectó package.json. Instalando dependencias de Node.js...")
+        subprocess.run(["npm", "install"], check=True)
+        print("Dependencias de Node.js instaladas correctamente.")
+    else:
+        print(
+            "No se detectó package.json. Saltando instalación de dependencias de Node.js.")
+
+
 def main():
-    # Solicitar el URL del repositorio
+    print("Bienvenido al asistente de configuración de su entorno de desarrollo.")
+
+    # Paso 1: Solicitar el URL del repositorio
     url = input("Ingrese el URL del repositorio de Git: ").strip()
 
-    # Verificar el URL
+    # Paso 2: Verificar el URL
     if verificar_url_repositorio(url):
         print("\nURL verificado correctamente.")
 
-        # Obtener el nombre del repositorio y archivos
+        # Paso 3: Obtener el nombre y lista de archivos del repositorio
         nombre, archivos = obtener_nombre_y_archivos_repositorio(url)
-        print(f"\nNombre del repositorio: {nombre}")
-        print("Archivos del repositorio:")
-        # Muestra los primeros 10 archivos como vista previa
-        for archivo in archivos[:10]:
-            print(f"  - {archivo}")
+        if nombre and archivos:
+            print(f"\nNombre del repositorio: {nombre}")
+            print("Archivos del repositorio (vista previa de 10 archivos):")
+            for archivo in archivos[:10]:
+                print(f"  - {archivo}")
+        else:
+            print(
+                "No se pudieron obtener los detalles del repositorio. Proceso terminado.")
+            return
 
-        # Seleccionar carpeta de clonación
+        # Paso 4: Seleccionar carpeta de clonación
         carpeta_clonacion = seleccionar_carpeta_clonacion(os.getcwd())
-        print(f"\nEl repositorio se clonará en: {carpeta_clonacion}")
+        if carpeta_clonacion:
+            print(f"\nEl repositorio se clonará en: {carpeta_clonacion}")
+        else:
+            print("Error al seleccionar la carpeta de clonación. Proceso terminado.")
+            return
+
+        # Paso 5: Confirmación final
+        input("\nConfiguración inicial completada. Presione Enter para continuar con la clonación...")
+
+        # Paso 6: Clonar el repositorio en la carpeta seleccionada
+        if clone_repository(url, carpeta_clonacion):
+            print("Repositorio clonado exitosamente.")
+
+            # Paso 7: Detectar dependencias
+            dependencies = detect_dependencies(carpeta_clonacion)
+
+            # Paso 8: Instalar dependencias
+            install_required_dependencies(dependencies)
+
+            # Paso 9: Configuración de entorno virtual de Python (si es necesario)
+            setup_python_virtualenv()
+
+            # Paso 10: Cargar las variables de entorno desde un archivo .env si está presente
+            setup_environment_variables()
+
+            # Paso 11: Instalar las dependencias de Python si requirements.txt está presente
+            install_python_dependencies()
+
+            # Paso 12: Instalar las dependencias de Node.js si package.json está presente
+            install_node_dependencies()
+
     else:
         print("Proceso terminado. Verifique el URL e intente de nuevo.")
 
