@@ -5,6 +5,9 @@ import shutil
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
+import tkinter as tk
+from tkinter import messagebox, filedialog
+from tkinter import ttk
 
 
 def verificar_url_repositorio(url):
@@ -53,27 +56,49 @@ def seleccionar_carpeta_clonacion(default_dir):
     return default_dir
 
 
-def clone_repository(repo_url, destination_folder):
+def clone_repository(repo_url, destination_folder, root):
+    """Clona el repositorio dentro de su propia carpeta en la ubicación de destino."""
+    repo_name = os.path.basename(repo_url).replace('.git', '')
+    repo_path = os.path.join(destination_folder, repo_name)
+
     # Crear la carpeta de destino si no existe
     if not os.path.exists(destination_folder):
         os.makedirs(destination_folder)
 
     # Ejecutar el comando de clonación de git
     try:
-        result = subprocess.run(
-            ["git", "clone", repo_url, destination_folder],
-            capture_output=True,
-            text=True,
-            check=True
+        process = subprocess.Popen(
+            ["git", "clone", repo_url, repo_path],
+            stdout=subprocess.PIPE,  # Capturar salida estándar
+            stderr=subprocess.PIPE,  # Capturar salida de error
+            text=True
         )
-        print("Repositorio clonado con éxito en:", destination_folder)
-    except subprocess.CalledProcessError as e:
-        print("Error al clonar el repositorio:", e.stderr)
-        return False
 
-    # Listar archivos principales como vista previa
-    show_file_preview(destination_folder)
-    return True
+        # Procesar salida línea por línea
+        for line in process.stdout:
+            # Actualizar el log
+            text_log.insert(tk.END, line)
+            text_log.see(tk.END)  # Scroll automático
+
+            # Simular progreso (esto es un ejemplo, git no da progreso directamente)
+            progress["value"] += 5
+            root.update_idletasks()
+
+        process.wait()  # Esperar a que el proceso termine
+        if process.returncode == 0:
+            print(f"Repositorio clonado con éxito en: {repo_path}")
+            # Listar archivos principales como vista previa
+            show_file_preview(destination_folder)
+            return repo_path  # Devuelve la ruta del repositorio clonado
+        else:
+            raise subprocess.CalledProcessError(
+                process.returncode, process.args)
+    except subprocess.CalledProcessError as e:
+        text_log.insert(
+            tk.END, f"Error al clonar el repositorio: {e.stderr}\n")
+        text_log.see(tk.END)
+        print(f"Error al clonar el repositorio: {e.stderr}")
+        return None
 
 
 def show_file_preview(folder_path):
@@ -194,12 +219,13 @@ def install_required_dependencies(dependencies):
                 print(f"Instrucción: {manual_instruction}")
 
 
-def setup_python_virtualenv():
-    """Crea y activa un entorno virtual en Python si es necesario."""
-    if not os.path.exists("venv"):
-        print("Creando entorno virtual en Python...")
-        subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
-        print("Entorno virtual creado.")
+def setup_python_virtualenv(project_folder):
+    """Crea un entorno virtual dentro de la carpeta del proyecto clonado."""
+    venv_path = os.path.join(project_folder, '.venv')
+    if not os.path.exists(venv_path):
+        print(f"Creando entorno virtual en: {venv_path}")
+        subprocess.run([sys.executable, "-m", "venv", venv_path], check=True)
+        print("Entorno virtual creado con éxito.")
     else:
         print("El entorno virtual ya existe.")
 
@@ -244,63 +270,126 @@ def install_node_dependencies():
             "No se detectó package.json. Saltando instalación de dependencias de Node.js.")
 
 
-def main():
-    print("Bienvenido al asistente de configuración de su entorno de desarrollo.")
-
-    # Paso 1: Solicitar el URL del repositorio
-    url = input("Ingrese el URL del repositorio de Git: ").strip()
-
-    # Paso 2: Verificar el URL
+def gui_verificar_url():
+    """GUI para verificar URL del repositorio."""
+    url = entry_url.get().strip()
     if verificar_url_repositorio(url):
-        print("\nURL verificado correctamente.")
-
-        # Paso 3: Obtener el nombre y lista de archivos del repositorio
-        nombre, archivos = obtener_nombre_y_archivos_repositorio(url)
-        if nombre and archivos:
-            print(f"\nNombre del repositorio: {nombre}")
-            print("Archivos del repositorio (vista previa de 10 archivos):")
-            for archivo in archivos[:10]:
-                print(f"  - {archivo}")
-        else:
-            print(
-                "No se pudieron obtener los detalles del repositorio. Proceso terminado.")
-            return
-
-        # Paso 4: Seleccionar carpeta de clonación
-        carpeta_clonacion = seleccionar_carpeta_clonacion(os.getcwd())
-        if carpeta_clonacion:
-            print(f"\nEl repositorio se clonará en: {carpeta_clonacion}")
-        else:
-            print("Error al seleccionar la carpeta de clonación. Proceso terminado.")
-            return
-
-        # Paso 5: Confirmación final
-        input("\nConfiguración inicial completada. Presione Enter para continuar con la clonación...")
-
-        # Paso 6: Clonar el repositorio en la carpeta seleccionada
-        if clone_repository(url, carpeta_clonacion):
-            print("Repositorio clonado exitosamente.")
-
-            # Paso 7: Detectar dependencias
-            dependencies = detect_dependencies(carpeta_clonacion)
-
-            # Paso 8: Instalar dependencias
-            install_required_dependencies(dependencies)
-
-            # Paso 9: Configuración de entorno virtual de Python (si es necesario)
-            setup_python_virtualenv()
-
-            # Paso 10: Cargar las variables de entorno desde un archivo .env si está presente
-            setup_environment_variables()
-
-            # Paso 11: Instalar las dependencias de Python si requirements.txt está presente
-            install_python_dependencies()
-
-            # Paso 12: Instalar las dependencias de Node.js si package.json está presente
-            install_node_dependencies()
-
+        messagebox.showinfo("Éxito", "El URL del repositorio es válido.")
     else:
-        print("Proceso terminado. Verifique el URL e intente de nuevo.")
+        messagebox.showerror(
+            "Error", "El URL del repositorio no es válido o no se pudo conectar.")
+
+
+def gui_seleccionar_carpeta():
+    """GUI para seleccionar carpeta de clonación."""
+    folder = filedialog.askdirectory(title="Seleccionar carpeta de clonación")
+    if folder:
+        entry_folder.delete(0, tk.END)
+        entry_folder.insert(0, folder)
+        messagebox.showinfo("Carpeta seleccionada",
+                            f"Carpeta configurada: {folder}")
+    else:
+        messagebox.showerror("Error", "No se seleccionó ninguna carpeta.")
+
+
+def gui_clonar_repositorio():
+    """GUI para clonar el repositorio y crear el entorno virtual."""
+    url = entry_url.get().strip()
+    folder = entry_folder.get().strip()
+
+    if not url or not folder:
+        messagebox.showerror(
+            "Error", "Debe proporcionar el URL del repositorio y la carpeta de destino.")
+        return
+
+    # Limpiar el listbox antes de la nueva clonación
+    listbox_carpetas.delete(0, tk.END)
+
+    # Clonar el repositorio
+    repo_path = clone_repository(url, folder, root)
+    if repo_path:
+        messagebox.showinfo("Éxito", f"Repositorio clonado en {repo_path}")
+
+        # Mostrar las primeras 10 carpetas en el listbox
+        carpetas = mostrar_10_carpetas(repo_path)
+        for carpeta in carpetas:
+            listbox_carpetas.insert(tk.END, carpeta)
+
+        # Crear entorno virtual
+        setup_python_virtualenv(repo_path)
+    else:
+        messagebox.showerror("Error", "No se pudo clonar el repositorio.")
+
+
+def gui_detectar_dependencias():
+    """GUI para detectar dependencias."""
+    folder = entry_folder.get().strip()
+    if not folder:
+        messagebox.showerror(
+            "Error", "Debe proporcionar la carpeta del proyecto.")
+        return
+    dependencies = detect_dependencies(folder)
+    if dependencies:
+        messagebox.showinfo("Dependencias detectadas", "\n".join(
+            [f"{k}: {v}" for k, v in dependencies.items()]))
+    else:
+        messagebox.showinfo("Sin dependencias",
+                            "No se detectaron dependencias específicas.")
+
+
+def mostrar_10_carpetas(folder_path):
+    """Obtiene las primeras 10 carpetas del proyecto clonado."""
+    carpetas = [f.name for f in Path(folder_path).iterdir() if f.is_dir()]
+    return carpetas[:10]  # Retorna solo las primeras 10 carpetas
+
+
+def main():
+    """Interfaz gráfica principal."""
+    global entry_url, entry_folder, listbox_carpetas, progress, text_log, root  # Referencias globales
+
+    # Crear la ventana principal
+    root = tk.Tk()
+    root.title("Asistente de Configuración de Entorno")
+
+    # URL del repositorio
+    tk.Label(root, text="URL del Repositorio:").grid(
+        row=0, column=0, padx=10, pady=5, sticky="w")
+    entry_url = tk.Entry(root, width=50)
+    entry_url.grid(row=0, column=1, padx=10, pady=5)
+
+    # Carpeta de clonación
+    tk.Label(root, text="Carpeta de Clonación:").grid(
+        row=1, column=0, padx=10, pady=5, sticky="w")
+    entry_folder = tk.Entry(root, width=50)
+    entry_folder.grid(row=1, column=1, padx=10, pady=5)
+    tk.Button(root, text="Seleccionar...", command=gui_seleccionar_carpeta).grid(
+        row=1, column=2, padx=10, pady=5)
+
+    # Botones para las acciones
+    tk.Button(root, text="Verificar URL", command=gui_verificar_url).grid(
+        row=2, column=0, padx=10, pady=10)
+    tk.Button(root, text="Clonar Repositorio", command=gui_clonar_repositorio).grid(
+        row=2, column=1, padx=10, pady=10)
+    tk.Button(root, text="Detectar Dependencias", command=gui_detectar_dependencias).grid(
+        row=3, column=0, padx=10, pady=10)
+    tk.Button(root, text="Salir", command=root.quit).grid(
+        row=3, column=1, padx=10, pady=10)
+
+    # Barra de progreso
+    progress = ttk.Progressbar(
+        root, orient="horizontal", length=300, mode="determinate")
+    progress.grid(row=4, column=0, columnspan=2, padx=10, pady=5)
+
+    # Log de clonación
+    text_log = tk.Text(root, width=40, height=5)
+    text_log.grid(row=5, column=0, columnspan=3, padx=10, pady=5)
+
+    # Listbox para carpetas
+    listbox_carpetas = tk.Listbox(root, width=40, height=15)
+    listbox_carpetas.grid(row=0, column=3, rowspan=5, padx=10, pady=5)
+
+    # Ejecutar el loop principal
+    root.mainloop()
 
 
 if __name__ == "__main__":
